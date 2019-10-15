@@ -14,6 +14,7 @@ use Swoole\Timer;
 abstract class AbstractPool
 {
     private $createdNum = 0;
+    /** @var Channel */
     private $poolChannel;
     private $objHash = [];
     /** @var Config  */
@@ -34,10 +35,6 @@ abstract class AbstractPool
             throw new Exception("pool max num is small than min num for {$class} error");
         }
         $this->conf = $conf;
-        $this->poolChannel = new Channel($conf->getMaxObjectNum() + 8);
-        if ($conf->getIntervalCheckTime() > 0) {
-            $this->timerId = Timer::tick($conf->getIntervalCheckTime(), [$this, 'intervalCheck']);
-        }
     }
 
     /*
@@ -52,6 +49,10 @@ abstract class AbstractPool
             $this->unsetObj($obj);
             return true;
         }
+        /*
+        * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
+        */
+        $this->init();
         /*
          * 仅仅允许归属于本pool且不在pool内的对象进行回收
          */
@@ -88,6 +89,10 @@ abstract class AbstractPool
      */
     public function getObj(float $timeout = null, int $tryTimes = 3)
     {
+        /*
+        * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
+        */
+        $this->init();
         /*
          * 当标记为销毁后，禁止取出对象
          */
@@ -180,6 +185,10 @@ abstract class AbstractPool
      */
     public function idleCheck(int $idleTime)
     {
+        /*
+        * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
+        */
+        $this->init();
         $list = [];
         while (!$this->poolChannel->isEmpty()){
             $item = $this->poolChannel->pop(0.01);
@@ -211,7 +220,12 @@ abstract class AbstractPool
         if($this->createdNum < $num){
             $left = $num - $this->createdNum;
             while ($left > 0 ){
-                $this->initObject();
+                /*
+                 * 避免死循环
+                 */
+                if($this->initObject() == false){
+                    break;
+                }
                 $left--;
             }
         }
@@ -226,8 +240,6 @@ abstract class AbstractPool
         return $this->keepMin($num);
     }
 
-
-
     public function getConfig():Config
     {
         return $this->conf;
@@ -235,6 +247,7 @@ abstract class AbstractPool
 
     public function status()
     {
+        $this->init();
         return [
             'created' => $this->createdNum,
             'inuse' => $this->createdNum - $this->poolChannel->stats()['queue_num'],
@@ -245,6 +258,13 @@ abstract class AbstractPool
 
     private function initObject():bool
     {
+        if($this->destroy){
+            return false;
+        }
+        /*
+        * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
+        */
+        $this->init();
         $obj = null;
         $this->createdNum++;
         if($this->createdNum > $this->getConfig()->getMaxObjectNum()){
@@ -291,6 +311,10 @@ abstract class AbstractPool
     function destroyPool()
     {
         $this->destroy = true;
+        /*
+        * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
+        */
+        $this->init();
         if($this->timerId && Timer::exists($this->timerId)){
             Timer::clear($this->timerId);
             $this->timerId = null;
@@ -299,6 +323,16 @@ abstract class AbstractPool
             $item = $this->poolChannel->pop(0.01);
             $this->unsetObj($item);
         }
+        $this->poolChannel->close();
+    }
+
+    function reset():AbstractPool
+    {
+        $this->destroyPool();
+        $this->createdNum = 0;
+        $this->destroy = false;
+        $this->context = [];
+        return $this;
     }
 
     public function invoke(callable $call,float $timeout = null)
@@ -337,6 +371,16 @@ abstract class AbstractPool
             return $this->defer($timeout);
         }else{
             throw new PoolEmpty(static::class." pool is empty");
+        }
+    }
+
+    private function init()
+    {
+        if(!$this->poolChannel){
+            $this->poolChannel = new Channel($this->conf->getMaxObjectNum() + 8);
+            if ($this->conf->getIntervalCheckTime() > 0) {
+                $this->timerId = Timer::tick($this->conf->getIntervalCheckTime(), [$this, 'intervalCheck']);
+            }
         }
     }
 }
