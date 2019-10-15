@@ -338,7 +338,50 @@ array(4) {
 ```
 
 ### destroyPool
+销毁连接池  
+调用之后,连接池剩余的所有链接都会unsetObj,并且将关闭连接队列,调用之后getObj等方法都将失效:  
+```php
+go(function (){
+    $redisPool = new \App\Pool\RedisPool(new \EasySwoole\Pool\Config(), new \EasySwoole\Redis\Config\RedisConfig(\EasySwoole\EasySwoole\Config::getInstance()->getConf('REDIS')));
+    var_dump($redisPool->getObj());
+    $redisPool->destroyPool();
+    var_dump($redisPool->getObj());
+});
+```
 ### reset
+重置连接池,调用reset之后,会自动调用destroyPool销毁连接池,并在下一次getObj时重新初始化该连接池:  
+```php
+go(function (){
+    $redisPool = new \App\Pool\RedisPool(new \EasySwoole\Pool\Config(), new \EasySwoole\Redis\Config\RedisConfig(\EasySwoole\EasySwoole\Config::getInstance()->getConf('REDIS')));
+    var_dump($redisPool->getObj());
+    $redisPool->reset();
+    var_dump($redisPool->getObj());
+});
+```
+
 ### status
+获取连接池当前状态,调用之后将输出:  
+```
+array(4) {
+  ["created"]=>
+  int(10)
+  ["inuse"]=>
+  int(0)
+  ["max"]=>
+  int(20)
+  ["min"]=>
+  int(5)
+}
+```
 ### idleCheck
+回收空闲超时的连接
+
 ### intervalCheck
+调用此方法后,将调用idleCheck和keepMin方法,用于手动回收空闲连接和手动热启动连接
+```php
+public function intervalCheck()
+{
+    $this->idleCheck($this->getConfig()->getMaxIdleTime());
+    $this->keepMin($this->getConfig()->getMinObjectNum());
+}
+```
