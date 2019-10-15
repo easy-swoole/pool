@@ -215,6 +215,9 @@ abstract class AbstractPool
         $this->keepMin($this->getConfig()->getMinObjectNum());
     }
 
+    /*
+    * 可以解决冷启动问题,其实是是keepMin别名
+    */
     public function keepMin(?int $num = null): int
     {
         if($this->createdNum < $num){
@@ -232,13 +235,6 @@ abstract class AbstractPool
         return $this->createdNum;
     }
 
-    /*
-     * 用以解决冷启动问题,其实是是keepMin别名
-    */
-    public function preLoad(?int $num = null): int
-    {
-        return $this->keepMin($num);
-    }
 
     public function getConfig():Config
     {
