@@ -373,7 +373,7 @@ abstract class AbstractPool
     private function init()
     {
         if(!$this->poolChannel){
-            $this->poolChannel = new Channe($this->conf->getMaxObjectNum() + 8);
+            $this->poolChannel = new Channel($this->conf->getMaxObjectNum() + 8);
             if ($this->conf->getIntervalCheckTime() > 0) {
                 $this->timerId = Timer::tick($this->conf->getIntervalCheckTime(), [$this, 'intervalCheck']);
             }
