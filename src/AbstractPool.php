@@ -105,7 +105,7 @@ abstract class AbstractPool
         $object = null;
         if($this->poolChannel->isEmpty()){
             try{
-                $this->initObject();
+                $this->initObject($tryTimes);
             }catch (\Throwable $throwable){
                 if($tryTimes <= 0){
                     throw $throwable;
@@ -252,7 +252,7 @@ abstract class AbstractPool
         ];
     }
 
-    private function initObject():bool
+    private function initObject($tryCreateTimes):bool
     {
         if($this->destroy){
             return false;
@@ -268,7 +268,19 @@ abstract class AbstractPool
             return false;
         }
         try{
-            $obj = $this->createObject();
+            while($tryCreateTimes>0){
+                try {
+                    $obj = $this->createObject();
+                    break;
+                }catch (\Exception $e){
+                    // 处理异常  如 mysql连接错误，抛出异常给用户，否则无法排查错误问题，只知道pool empty
+                    $tryCreateTimes--;
+                    if ($tryCreateTimes === 0){
+                        throw $e;
+                    }
+                    continue;
+                }
+            }
             if(is_object($obj)){
                 $hash = Random::character(12);
                 $this->objHash[$hash] = true;
