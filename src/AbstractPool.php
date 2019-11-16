@@ -252,7 +252,7 @@ abstract class AbstractPool
         ];
     }
 
-    private function initObject($tryCreateTimes):bool
+    private function initObject($tryCreateTimes = 3):bool
     {
         if($this->destroy){
             return false;
