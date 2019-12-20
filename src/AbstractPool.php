@@ -305,7 +305,10 @@ abstract class AbstractPool
         }
     }
 
-    function destroyPool()
+    /*
+     * 销毁该pool，但保留pool原有状态
+     */
+    function destroy()
     {
         $this->destroy = true;
         /*
@@ -321,14 +324,16 @@ abstract class AbstractPool
             $this->unsetObj($item);
         }
         $this->poolChannel->close();
+        $this->poolChannel = null;
     }
 
     function reset(): AbstractPool
     {
-        $this->destroyPool();
+        $this->destroy();
         $this->createdNum = 0;
         $this->destroy = false;
         $this->context = [];
+        $this->objHash = [];
         return $this;
     }
 
@@ -373,7 +378,7 @@ abstract class AbstractPool
 
     private function init()
     {
-        if (!$this->poolChannel) {
+        if ((!$this->poolChannel) && (!$this->destroy)) {
             $this->poolChannel = new Channel($this->conf->getMaxObjectNum() + 8);
             if ($this->conf->getIntervalCheckTime() > 0) {
                 $this->timerId = Timer::tick($this->conf->getIntervalCheckTime(), [$this, 'intervalCheck']);
