@@ -363,12 +363,9 @@ abstract class AbstractPool
         $obj = $this->getObj($timeout);
         if ($obj) {
             $this->context[$cid] = $obj;
-            Coroutine::defer(function () use ($cid) {
-                if (isset($this->context[$cid])) {
-                    $obj = $this->context[$cid];
-                    unset($this->context[$cid]);
-                    $this->recycleObj($obj);
-                }
+            Coroutine::defer(function () use ($cid,$obj) {
+                //在recycle中已经处理过上下文，在此不需要判断是否存在上下文了。
+                $this->recycleObj($obj);
             });
             return $this->defer($timeout);
         } else {
