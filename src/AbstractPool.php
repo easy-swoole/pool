@@ -193,6 +193,16 @@ abstract class AbstractPool
         $list = [];
         while (!$this->poolChannel->isEmpty()) {
             $item = $this->poolChannel->pop(0.01);
+            if(!$item){
+                continue;
+            }
+            if(!$this->itemIntervalCheck($item)){
+                //标记为不在队列内，允许进行gc回收
+                $hash = $item->__objHash;
+                $this->objHash[$hash] = false;
+                $this->unsetObj($item);
+                continue;
+            }
             if (time() - $item->__lastUseTime > $idleTime) {
                 //标记为不在队列内，允许进行gc回收
                 $hash = $item->__objHash;
@@ -216,8 +226,17 @@ abstract class AbstractPool
         $this->keepMin($this->getConfig()->getMinObjectNum());
     }
 
+    /**
+     * @param $item  __lastUseTime 属性表示该对象被最后一次使用的时间
+     * @return bool
+     */
+    public function itemIntervalCheck($item):bool
+    {
+        return true;
+    }
+
     /*
-    * 可以解决冷启动问题,其实是是keepMin别名
+    * 可以解决冷启动问题
     */
     public function keepMin(?int $num = null): int
     {
