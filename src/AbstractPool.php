@@ -117,6 +117,10 @@ abstract class AbstractPool
         }
         $object = $this->poolChannel->pop($timeout);
         if (is_object($object)) {
+            $hash = $object->__objHash;
+            //标记该对象已经被使用，不在pool中
+            $this->objHash[$hash] = false;
+            $object->__lastUseTime = time();
             if ($object instanceof ObjectInterface) {
                 try {
                     if ($object->beforeUse() === false) {
@@ -138,10 +142,6 @@ abstract class AbstractPool
                     }
                 }
             }
-            $hash = $object->__objHash;
-            //标记该对象已经被使用，不在pool中
-            $this->objHash[$hash] = false;
-            $object->__lastUseTime = time();
             return $object;
         } else {
             return null;
@@ -153,7 +153,7 @@ abstract class AbstractPool
      */
     public function unsetObj($obj): bool
     {
-        if ($this->isPoolObject($obj) && (!$this->isInPool($obj))) {
+        if (!$this->isInPool($obj)) {
             /*
              * 主动回收可能存在的上下文
              */
