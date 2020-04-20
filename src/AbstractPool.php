@@ -196,20 +196,23 @@ abstract class AbstractPool
             if(!$item){
                 continue;
             }
-            if(!$this->itemIntervalCheck($item)){
-                //标记为不在队列内，允许进行gc回收
-                $hash = $item->__objHash;
-                $this->objHash[$hash] = false;
-                $this->unsetObj($item);
-                continue;
-            }
+            //回收超时没有使用的链接
             if (time() - $item->__lastUseTime > $idleTime) {
                 //标记为不在队列内，允许进行gc回收
                 $hash = $item->__objHash;
                 $this->objHash[$hash] = false;
                 $this->unsetObj($item);
             } else {
-                $list[] = $item;
+                //执行itemIntervalCheck检查
+                if(!$this->itemIntervalCheck($item)){
+                    //标记为不在队列内，允许进行gc回收
+                    $hash = $item->__objHash;
+                    $this->objHash[$hash] = false;
+                    $this->unsetObj($item);
+                    continue;
+                }else{
+                    $list[] = $item;
+                }
             }
         }
         foreach ($list as $item) {
