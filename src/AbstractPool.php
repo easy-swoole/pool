@@ -233,7 +233,7 @@ abstract class AbstractPool
      * @param $item  __lastUseTime 属性表示该对象被最后一次使用的时间
      * @return bool
      */
-    public function itemIntervalCheck($item):bool
+    protected function itemIntervalCheck($item):bool
     {
         return true;
     }
