@@ -190,8 +190,9 @@ abstract class AbstractPool
         * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
         */
         $this->init();
-        $list = [];
-        while (!$this->poolChannel->isEmpty()) {
+        $size = $this->poolChannel->length();
+        while (!$this->poolChannel->isEmpty() && $size >= 0) {
+            $size--;
             $item = $this->poolChannel->pop(0.01);
             if(!$item){
                 continue;
@@ -211,12 +212,9 @@ abstract class AbstractPool
                     $this->unsetObj($item);
                     continue;
                 }else{
-                    $list[] = $item;
+                    $this->poolChannel->push($item);
                 }
             }
-        }
-        foreach ($list as $item) {
-            $this->poolChannel->push($item);
         }
     }
 
