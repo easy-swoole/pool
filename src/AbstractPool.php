@@ -342,12 +342,14 @@ abstract class AbstractPool
             Timer::clear($this->timerId);
             $this->timerId = null;
         }
-        while (!$this->poolChannel->isEmpty()) {
-            $item = $this->poolChannel->pop(0.01);
-            $this->unsetObj($item);
+        if($this->poolChannel){
+            while (!$this->poolChannel->isEmpty()) {
+                $item = $this->poolChannel->pop(0.01);
+                $this->unsetObj($item);
+            }
+            $this->poolChannel->close();
+            $this->poolChannel = null;
         }
-        $this->poolChannel->close();
-        $this->poolChannel = null;
     }
 
     function reset(): AbstractPool
