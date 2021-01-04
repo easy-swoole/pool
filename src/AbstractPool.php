@@ -22,6 +22,7 @@ abstract class AbstractPool
     private $timerId;
     private $destroy = false;
     private $context = [];
+    private $waitTime = 0;
 
     /*
      * 如果成功创建了,请返回对应的obj
@@ -115,7 +116,10 @@ abstract class AbstractPool
                 }
             }
         }
+        $start = microtime(true);
         $object = $this->poolChannel->pop($timeout);
+        $take = microtime(true) - $start;
+        $this->waitTime += $take;
         if (is_object($object)) {
             $hash = $object->__objHash;
             //标记该对象已经被使用，不在pool中
@@ -223,6 +227,7 @@ abstract class AbstractPool
      */
     public function intervalCheck()
     {
+        $this->waitTime = 0;
         $this->idleCheck($this->getConfig()->getMaxIdleTime());
         $this->keepMin($this->getConfig()->getMinObjectNum());
     }
