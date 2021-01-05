@@ -14,6 +14,7 @@ class Config extends SplBean
     protected $maxObjectNum = 20;
     protected $minObjectNum = 5;
     protected $getObjectTimeout = 3.0;
+    protected $loadAverageTime = 0.01;
 
     protected $extraConf;
 
@@ -109,6 +110,22 @@ class Config extends SplBean
     public function getMinObjectNum(): int
     {
         return $this->minObjectNum;
+    }
+
+    /**
+     * @return float
+     */
+    public function getLoadAverageTime(): float
+    {
+        return $this->loadAverageTime;
+    }
+
+    /**
+     * @param float $loadAverageTime
+     */
+    public function setLoadAverageTime(float $loadAverageTime): void
+    {
+        $this->loadAverageTime = $loadAverageTime;
     }
 
     public function setMinObjectNum(int $minObjectNum): Config

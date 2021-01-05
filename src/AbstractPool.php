@@ -19,10 +19,12 @@ abstract class AbstractPool
     private $objHash = [];
     /** @var Config */
     private $conf;
-    private $timerId;
+    private $intervalCheckTimerId;
+    private $loadAverageTimerId;
     private $destroy = false;
     private $context = [];
-    private $waitTime = 0;
+    private $loadWaitTime = 0;
+    private $loadUseTimes = 0;
 
     /*
      * 如果成功创建了,请返回对应的obj
@@ -62,7 +64,7 @@ abstract class AbstractPool
              * 主动回收可能存在的上下文
             */
             $cid = Coroutine::getCid();
-            if (isset($this->context[$cid]) && $this->context[$cid]->__objHash == $obj->__objHash) {
+            if (isset($this->context[$cid]) && $this->context[$cid]->__objHash === $obj->__objHash) {
                 unset($this->context[$cid]);
             }
             $hash = $obj->__objHash;
@@ -119,7 +121,7 @@ abstract class AbstractPool
         $start = microtime(true);
         $object = $this->poolChannel->pop($timeout);
         $take = microtime(true) - $start;
-        $this->waitTime += $take;
+        $this->loadWaitTime += $take;
         if (is_object($object)) {
             $hash = $object->__objHash;
             //标记该对象已经被使用，不在pool中
@@ -146,6 +148,7 @@ abstract class AbstractPool
                     }
                 }
             }
+            $this->loadUseTimes++;
             return $object;
         } else {
             return null;
@@ -163,7 +166,7 @@ abstract class AbstractPool
              */
             $cid = Coroutine::getCid();
             //当obj等于当前协程defer的obj时,则清除
-            if (isset($this->context[$cid]) && $this->context[$cid]->__objHash == $obj->__objHash) {
+            if (isset($this->context[$cid]) && $this->context[$cid]->__objHash === $obj->__objHash) {
                 unset($this->context[$cid]);
             }
             $hash = $obj->__objHash;
@@ -227,7 +230,6 @@ abstract class AbstractPool
      */
     public function intervalCheck()
     {
-        $this->waitTime = 0;
         $this->idleCheck($this->getConfig()->getMaxIdleTime());
         $this->keepMin($this->getConfig()->getMinObjectNum());
     }
@@ -343,9 +345,9 @@ abstract class AbstractPool
         * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
         */
         $this->init();
-        if ($this->timerId && Timer::exists($this->timerId)) {
-            Timer::clear($this->timerId);
-            $this->timerId = null;
+        if ($this->intervalCheckTimerId && Timer::exists($this->intervalCheckTimerId)) {
+            Timer::clear($this->intervalCheckTimerId);
+            $this->intervalCheckTimerId = null;
         }
         if($this->poolChannel){
             while (!$this->poolChannel->isEmpty()) {
@@ -411,8 +413,34 @@ abstract class AbstractPool
         if ((!$this->poolChannel) && (!$this->destroy)) {
             $this->poolChannel = new Channel($this->conf->getMaxObjectNum() + 8);
             if ($this->conf->getIntervalCheckTime() > 0) {
-                $this->timerId = Timer::tick($this->conf->getIntervalCheckTime(), [$this, 'intervalCheck']);
+                $this->intervalCheckTimerId = Timer::tick($this->conf->getIntervalCheckTime(), [$this, 'intervalCheck']);
             }
+            $this->loadAverageTimerId = Timer::tick(5*1000,function (){
+                $loadWaitTime = $this->loadWaitTime;
+                $loadUseTimes = $this->loadUseTimes;
+                $this->loadUseTimes = 0;
+                $this->loadWaitTime = 0;
+                //避免分母为0
+                if($loadUseTimes <= 0){
+                    $loadUseTimes = 1;
+                }
+                $average = $loadWaitTime/$loadUseTimes;
+                if($this->getConfig()->getLoadAverageTime() > $average){
+                    //负载小。尝试回收链接百分之5的链接
+                    $descNum = intval($this->createdNum * 0.05);
+                    if( ($this->createdNum - $descNum) > $this->getConfig()->getMinObjectNum()){
+                        while ($descNum > 0){
+                            $temp = $this->getObj(0.001,0);
+                            if($temp){
+                                $this->unsetObj($temp);
+                            }else{
+                                break;
+                            }
+                            $descNum--;
+                        }
+                    }
+                }
+            });
         }
     }
 }
