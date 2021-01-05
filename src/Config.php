@@ -14,7 +14,7 @@ class Config extends SplBean
     protected $maxObjectNum = 20;
     protected $minObjectNum = 5;
     protected $getObjectTimeout = 3.0;
-    protected $loadAverageTime = 0.01;
+    protected $loadAverageTime = 0.001;
 
     protected $extraConf;
 
