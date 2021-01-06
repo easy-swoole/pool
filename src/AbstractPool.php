@@ -23,7 +23,7 @@ abstract class AbstractPool
     private $loadAverageTimerId;
     private $destroy = false;
     private $context = [];
-    private $loadWaitTime = 0;
+    private $loadWaitTimes = 0;
     private $loadUseTimes = 0;
 
     /*
@@ -121,7 +121,8 @@ abstract class AbstractPool
         $start = microtime(true);
         $object = $this->poolChannel->pop($timeout);
         $take = microtime(true) - $start;
-        $this->loadWaitTime += $take;
+        // getObj 记录取出等待时间 5s周期内
+        $this->loadWaitTimes += $take;
         if (is_object($object)) {
             $hash = $object->__objHash;
             //标记该对象已经被使用，不在pool中
@@ -148,6 +149,7 @@ abstract class AbstractPool
                     }
                 }
             }
+            // 每次getObj 记录该连接池取出的次数 5s周期内
             $this->loadUseTimes++;
             return $object;
         } else {
@@ -416,27 +418,28 @@ abstract class AbstractPool
                 $this->intervalCheckTimerId = Timer::tick($this->conf->getIntervalCheckTime(), [$this, 'intervalCheck']);
             }
             $this->loadAverageTimerId = Timer::tick(5*1000,function (){
-                $loadWaitTime = $this->loadWaitTime;
+                // 5s 定时检测
+                $loadWaitTime = $this->loadWaitTimes;
                 $loadUseTimes = $this->loadUseTimes;
                 $this->loadUseTimes = 0;
-                $this->loadWaitTime = 0;
+                $this->loadWaitTimes = 0;
                 //避免分母为0
                 if($loadUseTimes <= 0){
                     $loadUseTimes = 1;
                 }
-                $average = $loadWaitTime/$loadUseTimes;
+                $average = $loadWaitTime/$loadUseTimes; // average 记录的是平均每个链接取出的时间
                 if($this->getConfig()->getLoadAverageTime() > $average){
                     //负载小。尝试回收链接百分之5的链接
-                    $descNum = intval($this->createdNum * 0.05);
-                    if( ($this->createdNum - $descNum) > $this->getConfig()->getMinObjectNum()){
-                        while ($descNum > 0){
+                    $decNum = intval($this->createdNum * 0.05);
+                    if( ($this->createdNum - $decNum) > $this->getConfig()->getMinObjectNum()){
+                        while ($decNum > 0){
                             $temp = $this->getObj(0.001,0);
                             if($temp){
                                 $this->unsetObj($temp);
                             }else{
                                 break;
                             }
-                            $descNum--;
+                            $decNum--;
                         }
                     }
                 }
