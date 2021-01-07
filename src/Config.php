@@ -122,10 +122,12 @@ class Config extends SplBean
 
     /**
      * @param float $loadAverageTime
+     * @return Config
      */
-    public function setLoadAverageTime(float $loadAverageTime): void
+    public function setLoadAverageTime(float $loadAverageTime): Config
     {
         $this->loadAverageTime = $loadAverageTime;
+        return $this;
     }
 
     public function setMinObjectNum(int $minObjectNum): Config
