@@ -517,4 +517,9 @@ abstract class AbstractPool
     {
         return $this->poolHash;
     }
+
+    final function __clone()
+    {
+        throw new Exception('AbstractObject cannot be clone');
+    }
 }
