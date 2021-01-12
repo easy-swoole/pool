@@ -351,6 +351,11 @@ abstract class AbstractPool
             Timer::clear($this->intervalCheckTimerId);
             $this->intervalCheckTimerId = null;
         }
+        if ($this->loadAverageTimerId && Timer::exists($this->loadAverageTimerId)) {
+            Timer::clear($this->loadAverageTimerId);
+            $this->loadAverageTimerId = null;
+        }
+
         if($this->poolChannel){
             while (!$this->poolChannel->isEmpty()) {
                 $item = $this->poolChannel->pop(0.01);
