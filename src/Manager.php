@@ -29,4 +29,11 @@ class Manager
         return null;
     }
 
+    function resetAll()
+    {
+        /** @var AbstractPool $item */
+        foreach ($this->container as $item){
+            $item->destroy();
+        }
+    }
 }
