@@ -217,7 +217,7 @@ $redisConfig2 = new \EasySwoole\Redis\Config\RedisConfig(\EasySwoole\EasySwoole\
 go(function () {
     // 获取 redis 连接对象
     $redis1 = \EasySwoole\Pool\Manager::getInstance()->get('redis1')->getObj();
-    $redis2 = \EasySwoole\Pool\Manager::getInstance()->get('redis1')->getObj();
+    $redis2 = \EasySwoole\Pool\Manager::getInstance()->get('redis2')->getObj();
 
     $redis1->set('name', '仙士可');
     var_dump($redis1->get('name'));
