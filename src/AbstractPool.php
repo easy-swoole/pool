@@ -28,8 +28,12 @@ abstract class AbstractPool
     private $loadUseTimes = 0;
     
     private $poolHash;
+
+    private $inUseObject = [];
     
     private $statusTable;
+
+
     /*
      * 如果成功创建了,请返回对应的obj
      */
@@ -51,6 +55,11 @@ abstract class AbstractPool
         $this->statusTable->column('lastAliveTime',Table::TYPE_INT,10);
         $this->statusTable->create();
         $this->poolHash = substr(8,16,md5(spl_object_hash($this).getmypid()));
+    }
+
+    function getUsedObjects():array
+    {
+        return $this->inUseObject;
     }
 
     /*
@@ -83,6 +92,7 @@ abstract class AbstractPool
             $hash = $obj->__objHash;
             //标记为在pool内
             $this->objHash[$hash] = true;
+            unset($this->inUseObject[$hash]);
             if ($obj instanceof ObjectInterface) {
                 try {
                     $obj->objectRestore();
@@ -143,6 +153,7 @@ abstract class AbstractPool
             $hash = $object->__objHash;
             //标记该对象已经被使用，不在pool中
             $this->objHash[$hash] = false;
+            $this->inUseObject[$hash] = $object;
             $object->__lastUseTime = time();
             if ($object instanceof ObjectInterface) {
                 try {
@@ -190,6 +201,7 @@ abstract class AbstractPool
             }
             $hash = $obj->__objHash;
             unset($this->objHash[$hash]);
+            unset($this->inUseObject[$hash]);
             if ($obj instanceof ObjectInterface) {
                 try {
                     $obj->gc();
