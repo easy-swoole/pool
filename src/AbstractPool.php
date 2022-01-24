@@ -26,11 +26,9 @@ abstract class AbstractPool
     private $context = [];
     private $loadWaitTimes = 0;
     private $loadUseTimes = 0;
-    
-    private $poolHash;
 
+    private $poolHash;
     private $inUseObject = [];
-    
     private $statusTable;
 
 
@@ -54,7 +52,7 @@ abstract class AbstractPool
         $this->statusTable->column('loadUseTimes',Table::TYPE_INT,10);
         $this->statusTable->column('lastAliveTime',Table::TYPE_INT,10);
         $this->statusTable->create();
-        $this->poolHash = substr(8,16,md5(spl_object_hash($this).getmypid()));
+        $this->poolHash = substr(md5(spl_object_hash($this).getmypid()),8,16);
     }
 
     function getUsedObjects():array
@@ -277,7 +275,7 @@ abstract class AbstractPool
         foreach ($list as $key){
             $this->statusTable->del($key);
         }
-        
+
         $this->idleCheck($this->getConfig()->getMaxIdleTime());
         $this->keepMin($this->getConfig()->getMinObjectNum());
     }
@@ -413,6 +411,11 @@ abstract class AbstractPool
                 $item = $this->poolChannel->pop(0.01);
                 $this->unsetObj($item);
             }
+            foreach ($this->inUseObject as $item){
+                $this->unsetObj($item);
+                $this->inUseObject = [];
+            }
+
             $this->poolChannel->close();
             $this->poolChannel = null;
         }
