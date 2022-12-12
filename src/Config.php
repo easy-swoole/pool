@@ -9,8 +9,8 @@ use EasySwoole\Spl\SplBean;
 
 class Config extends SplBean
 {
-    protected $intervalCheckTime = 15*1000;
-    protected $maxIdleTime = 10;
+    protected $intervalCheckTime = 10*1000;
+    protected $maxIdleTime = 15;
     protected $maxObjectNum = 20;
     protected $minObjectNum = 5;
     protected $getObjectTimeout = 3.0;
