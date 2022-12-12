@@ -237,21 +237,25 @@ abstract class AbstractPool
             }
             //回收超时没有使用的链接
             if (time() - $item->__lastUseTime > $idleTime) {
-                //标记为不在队列内，允许进行gc回收
-                $hash = $item->__objHash;
-                $this->objHash[$hash] = false;
-                $this->unsetObj($item);
-            } else {
-                //执行itemIntervalCheck检查
-                if(!$this->itemIntervalCheck($item)){
+                $num = $this->getConfig()->getMinObjectNum();
+                if($this->createdNum > $num){
                     //标记为不在队列内，允许进行gc回收
                     $hash = $item->__objHash;
                     $this->objHash[$hash] = false;
                     $this->unsetObj($item);
                     continue;
-                }else{
-                    $this->poolChannel->push($item);
                 }
+            }
+            //执行itemIntervalCheck检查
+            if(!$this->itemIntervalCheck($item)){
+                //标记为不在队列内，允许进行gc回收
+                $hash = $item->__objHash;
+                $this->objHash[$hash] = false;
+                $this->unsetObj($item);
+            }else{
+                //如果itemIntervalCheck 为真，则重新标记为已经使用过，可以用。
+                $item->__lastUseTime = time();
+                $this->poolChannel->push($item);
             }
         }
     }
