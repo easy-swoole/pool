@@ -129,10 +129,18 @@ abstract class AbstractPool
         $object = null;
         if ($this->poolChannel->isEmpty()) {
             try {
-                $this->initObject();
+                $bool = $this->initObject();
+                if($bool === false){
+                    if ($tryTimes <= 0) {
+                        throw new Exception("initObject fail after 3 times");
+                    } else {
+                        $tryTimes--;
+                        return $this->getObj($timeout, $tryTimes);
+                    }
+                }
             } catch (\Throwable $throwable) {
                 if ($tryTimes <= 0) {
-                    throw $throwable;
+                    throw new Exception("initObject fail after 3 times case ".$throwable->getMessage());
                 } else {
                     $tryTimes--;
                     return $this->getObj($timeout, $tryTimes);
@@ -222,8 +230,12 @@ abstract class AbstractPool
     /*
      * 超过$idleTime未出队使用的，将会被回收。
      */
-    public function idleCheck(int $idleTime)
+    protected function idleCheck(?int $idleTime = null)
     {
+        if($idleTime == null) {
+            $idleTime = $this->getConfig()->getMaxIdleTime();
+        }
+
         /*
         * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
         */
@@ -260,10 +272,8 @@ abstract class AbstractPool
         }
     }
 
-    /*
-     * 允许外部调用
-     */
-    public function intervalCheck()
+
+    protected function intervalCheck()
     {
         //删除死去的进程状态
         $this->statusTable->set($this->poolHash(),[
@@ -279,9 +289,13 @@ abstract class AbstractPool
         foreach ($list as $key){
             $this->statusTable->del($key);
         }
+        try {
+            $this->idleCheck();
+            $this->keepMin();
+        }catch (\Throwable $throwable){
+            //屏蔽此处产生的异常。避免因为定时器中未捕获的异常导致进程退出
+        }
 
-        $this->idleCheck($this->getConfig()->getMaxIdleTime());
-        $this->keepMin($this->getConfig()->getMinObjectNum());
     }
 
     /**
@@ -307,7 +321,7 @@ abstract class AbstractPool
                 /*
                  * 避免死循环
                  */
-                if ($this->initObject() == false) {
+                if (!$this->initObject()) {
                     break;
                 }
                 $left--;
@@ -456,7 +470,7 @@ abstract class AbstractPool
                 $this->recycleObj($obj);
             }
         } else {
-            throw new PoolEmpty(static::class . " pool is empty");
+            throw new PoolEmpty( "pool is empty");
         }
     }
 
@@ -478,7 +492,7 @@ abstract class AbstractPool
             });
             return $this->defer($timeout);
         } else {
-            throw new PoolEmpty(static::class . " pool is empty");
+            throw new PoolEmpty( "pool is empty");
         }
     }
 
@@ -487,7 +501,9 @@ abstract class AbstractPool
         if ((!$this->poolChannel) && (!$this->destroy)) {
             $this->poolChannel = new Channel($this->conf->getMaxObjectNum() + 8);
             if ($this->conf->getIntervalCheckTime() > 0) {
-                $this->intervalCheckTimerId = Timer::tick($this->conf->getIntervalCheckTime(), [$this, 'intervalCheck']);
+                $this->intervalCheckTimerId = Timer::tick($this->conf->getIntervalCheckTime(),function (){
+                    $this->intervalCheck();
+                });
             }
             $this->loadAverageTimerId = Timer::tick(5*1000,function (){
                 // 5s 定时检测
