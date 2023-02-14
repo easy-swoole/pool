@@ -52,7 +52,6 @@ abstract class AbstractPool
         $this->statusTable->column('loadUseTimes',Table::TYPE_INT,10);
         $this->statusTable->column('lastAliveTime',Table::TYPE_INT,10);
         $this->statusTable->create();
-        $this->poolHash = substr(md5(spl_object_hash($this).getmypid()),8,16);
     }
 
     function getUsedObjects():array
@@ -282,7 +281,7 @@ abstract class AbstractPool
         $list = [];
         $time = time();
         foreach ($this->statusTable as $key => $item){
-            if($time - $item['lastAliveTime'] >= 2){
+            if($time - $item['lastAliveTime'] >= $this->getConfig()->getIntervalCheckTime() + 2){
                 $list[] = $key;
             }
         }
@@ -454,6 +453,7 @@ abstract class AbstractPool
         $this->destroy = false;
         $this->context = [];
         $this->objHash = [];
+        $this->poolHash = null;
         return $this;
     }
 
@@ -550,6 +550,9 @@ abstract class AbstractPool
 
     function poolHash():string
     {
+        if($this->poolHash == null){
+            $this->poolHash = substr(md5(Random::character().time()),8,16);
+        }
         return $this->poolHash;
     }
 
