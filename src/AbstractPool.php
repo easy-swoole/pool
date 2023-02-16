@@ -293,6 +293,7 @@ abstract class AbstractPool
             $this->keepMin();
         }catch (\Throwable $throwable){
             //屏蔽此处产生的异常。避免因为定时器中未捕获的异常导致进程退出
+            trigger_error($throwable->getMessage());
         }
 
     }
