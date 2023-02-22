@@ -27,7 +27,6 @@ abstract class AbstractPool
     private $loadWaitTimes = 0;
     private $loadUseTimes = 0;
 
-    private $poolHash;
     private $inUseObject = [];
 
 
@@ -36,8 +35,11 @@ abstract class AbstractPool
      */
     abstract protected function createObject();
 
-    public function __construct(Config $conf)
+    public function __construct(?Config $conf = null)
     {
+        if($conf == null){
+            $conf = new Config();
+        }
         if ($conf->getMinObjectNum() >= $conf->getMaxObjectNum()) {
             $class = static::class;
             throw new Exception("pool max num is small than min num for {$class} error");
@@ -410,7 +412,6 @@ abstract class AbstractPool
         $this->destroy = false;
         $this->context = [];
         $this->objHash = [];
-        $this->poolHash = null;
         return $this;
     }
 
