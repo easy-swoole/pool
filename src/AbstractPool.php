@@ -285,6 +285,7 @@ abstract class AbstractPool
     */
     public function keepMin(?int $num = null): int
     {
+        $currentAdd = 0;
         if($num == null){
             $num = $this->getConfig()->getMinObjectNum();
         }
@@ -298,9 +299,10 @@ abstract class AbstractPool
                     break;
                 }
                 $left--;
+                $currentAdd++;
             }
         }
-        return $this->createdNum;
+        return $currentAdd;
     }
 
 
