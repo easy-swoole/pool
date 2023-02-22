@@ -16,7 +16,6 @@ class Pool extends AbstractPool
     protected function createObject()
     {
         return new PoolObject();
-        // TODO: Implement createObject() method.
     }
 
 

@@ -14,9 +14,9 @@ class PoolObject implements ObjectInterface
 {
     protected $isOk = true;
 
-    public function __construct($isOk)
+    public function __construct()
     {
-        $this->isOk = $isOk;
+
     }
 
 

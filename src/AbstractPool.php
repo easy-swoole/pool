@@ -29,7 +29,6 @@ abstract class AbstractPool
 
     private $poolHash;
     private $inUseObject = [];
-    private $statusTable;
 
 
     /*
@@ -44,14 +43,6 @@ abstract class AbstractPool
             throw new Exception("pool max num is small than min num for {$class} error");
         }
         $this->conf = $conf;
-        $this->statusTable = new Table(1024);
-        $this->statusTable->column('created',Table::TYPE_INT,10);
-        $this->statusTable->column('pid',Table::TYPE_INT,10);
-        $this->statusTable->column('inuse',Table::TYPE_INT,10);
-        $this->statusTable->column('loadWaitTimes',Table::TYPE_FLOAT,10);
-        $this->statusTable->column('loadUseTimes',Table::TYPE_INT,10);
-        $this->statusTable->column('lastAliveTime',Table::TYPE_INT,10);
-        $this->statusTable->create();
     }
 
     function getUsedObjects():array
@@ -151,9 +142,6 @@ abstract class AbstractPool
         $take = microtime(true) - $start;
         // getObj 记录取出等待时间 5s周期内
         $this->loadWaitTimes += $take;
-        $this->statusTable->set($this->poolHash(),[
-            'loadWaitTimes'=>$this->loadWaitTimes
-        ]);
         if (is_object($object)) {
             $hash = $object->__objHash;
             //标记该对象已经被使用，不在pool中
@@ -183,7 +171,6 @@ abstract class AbstractPool
             }
             // 每次getObj 记录该连接池取出的次数 5s周期内
             $this->loadUseTimes++;
-            $this->statusTable->incr($this->poolHash(),'loadUseTimes');
             return $object;
         } else {
             return null;
@@ -214,11 +201,9 @@ abstract class AbstractPool
                     throw $throwable;
                 } finally {
                     $this->createdNum--;
-                    $this->statusTable->decr($this->poolHash(),'created');
                 }
             } else {
                 $this->createdNum--;
-                $this->statusTable->decr($this->poolHash(),'created');
             }
             return true;
         } else {
@@ -274,20 +259,6 @@ abstract class AbstractPool
 
     protected function intervalCheck()
     {
-        //删除死去的进程状态
-        $this->statusTable->set($this->poolHash(),[
-            'lastAliveTime'=>time()
-        ]);
-        $list = [];
-        $time = time();
-        foreach ($this->statusTable as $key => $item){
-            if($time - $item['lastAliveTime'] >= $this->getConfig()->getIntervalCheckTime() + 2){
-                $list[] = $key;
-            }
-        }
-        foreach ($list as $key){
-            $this->statusTable->del($key);
-        }
         try {
             $this->idleCheck();
             $this->keepMin();
@@ -336,17 +307,14 @@ abstract class AbstractPool
         return $this->conf;
     }
 
-    public function status(bool $currentWorker = false):array
+    public function status():array
     {
-        if($currentWorker){
-            return $this->statusTable->get($this->poolHash());
-        }else{
-            $data = [];
-            foreach ($this->statusTable as $key => $value){
-                $data[] = $value;
-            }
-            return $data;
-        }
+        return [
+            'created'=>$this->createdNum,
+            'inuse'=>count($this->inUseObject),
+            'loadWaitTimes'=>$this->loadWaitTimes,
+            'loadUseTimes'=>$this->loadUseTimes
+        ];
     }
 
     private function initObject(): bool
@@ -360,10 +328,8 @@ abstract class AbstractPool
         $this->init();
         $obj = null;
         $this->createdNum++;
-        $this->statusTable->incr($this->poolHash(),'created');
         if ($this->createdNum > $this->getConfig()->getMaxObjectNum()) {
             $this->createdNum--;
-            $this->statusTable->decr($this->poolHash(),'created');
             return false;
         }
         try {
@@ -377,11 +343,9 @@ abstract class AbstractPool
                 return true;
             } else {
                 $this->createdNum--;
-                $this->statusTable->decr($this->poolHash(),'created');
             }
         } catch (\Throwable $throwable) {
             $this->createdNum--;
-            $this->statusTable->decr($this->poolHash(),'created');
             throw $throwable;
         }
         return false;
@@ -436,14 +400,6 @@ abstract class AbstractPool
 
             $this->poolChannel->close();
             $this->poolChannel = null;
-        }
-
-        $list = [];
-        foreach ($this->statusTable as $key => $value){
-            $list[] = $key;
-        }
-        foreach ($list as $key){
-            $this->statusTable->del($key);
         }
     }
 
@@ -512,10 +468,6 @@ abstract class AbstractPool
                 $loadUseTimes = $this->loadUseTimes;
                 $this->loadUseTimes = 0;
                 $this->loadWaitTimes = 0;
-                $this->statusTable->set($this->poolHash(),[
-                    'loadWaitTimes'=>0,
-                    'loadUseTimes'=>0
-                ]);
                 //避免分母为0
                 if($loadUseTimes <= 0){
                     $loadUseTimes = 1;
@@ -537,28 +489,13 @@ abstract class AbstractPool
                     }
                 }
             });
-            //table记录初始化
-            $this->statusTable->set($this->poolHash(),[
-                'pid'=>getmypid(),
-                'created'=>0,
-                'inuse'=>0,
-                'loadWaitTimes'=>0,
-                'loadUseTimes'=>0,
-                'lastAliveTime'=>0
-            ]);
         }
-    }
-
-    function poolHash():string
-    {
-        if($this->poolHash == null){
-            $this->poolHash = substr(md5(Random::character().time()),8,16);
-        }
-        return $this->poolHash;
     }
 
     final function __clone()
     {
-        throw new Exception('AbstractObject cannot be clone');
+        if($this->poolChannel){
+            throw new Exception('pool cannot clone after init() call');
+        }
     }
 }

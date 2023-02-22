@@ -74,13 +74,18 @@ class PoolTest extends TestCase
         $this->assertEquals(true,$pool->isInPool($obj));
 
         $manager = Manager::getInstance()->register(new MagicPool(function () {
-            return new PoolObject(false);
+            return new PoolObject();
         }, new Config()), 'test2');
         $pool = $manager->get('test2');
         $obj = $pool->getObj();
-        $this->assertEquals(null,$obj);
         $status = $pool->status();
-        $this->assertEquals(0,$status['created']);
+        $this->assertEquals(1,$status['created']);
+        $this->assertEquals(1,$status['inuse']);
+
+        $pool->recycleObj($obj);
+
+        $status = $pool->status();
+        $this->assertEquals(1,$status['created']);
         $this->assertEquals(0,$status['inuse']);
     }
 }
