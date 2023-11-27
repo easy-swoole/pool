@@ -16,7 +16,7 @@ class PoolObject implements ObjectInterface
 
     public function __construct()
     {
-
+        var_dump('create');
     }
 
 
@@ -27,16 +27,17 @@ class PoolObject implements ObjectInterface
 
     function gc()
     {
-
+        var_dump("gc");
     }
 
     function objectRestore()
     {
-
+        var_dump('restore');
     }
 
     function beforeUse(): ?bool
     {
+        var_dump('beforeUse');
         return $this->isOk;
     }
 

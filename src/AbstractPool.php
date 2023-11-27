@@ -275,12 +275,13 @@ abstract class AbstractPool
     }
 
     /**
-     * @param $item $item->__lastUseTime 属性表示该对象被最后一次使用的时间
+     * @param $item
      * @return bool
      */
     protected function itemIntervalCheck($item):bool
     {
-        return true;
+        //默认返回false,在周期检查的时候，就废弃，重新创建，需要复用请在子类重写
+        return false;
     }
 
     /*
