@@ -294,7 +294,7 @@ abstract class AbstractPool
         }
         if ($this->createdNum < $num) {
             $left = $num - $this->createdNum;
-            while ($left > 0) {
+            while ($left > 1) {
                 /*
                  * 避免死循环
                  */
