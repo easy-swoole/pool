@@ -29,6 +29,8 @@ abstract class AbstractPool
 
     private $inUseObject = [];
 
+    private $lastUseTimeInfo = [];
+
 
     /*
      * 如果成功创建了,请返回对应的obj
@@ -76,10 +78,10 @@ abstract class AbstractPool
              * 主动回收可能存在的上下文
             */
             $cid = Coroutine::getCid();
-            if (isset($this->context[$cid]) && $this->context[$cid]->__objHash === $obj->__objHash) {
+            if (isset($this->context[$cid]) && spl_object_hash($this->context[$cid]) === spl_object_hash($obj)) {
                 unset($this->context[$cid]);
             }
-            $hash = $obj->__objHash;
+            $hash = spl_object_hash($obj);
             //标记为在pool内
             $this->objHash[$hash] = true;
             unset($this->inUseObject[$hash]);
@@ -145,11 +147,11 @@ abstract class AbstractPool
         // getObj 记录取出等待时间 5s周期内
         $this->loadWaitTimes += $take;
         if (is_object($object)) {
-            $hash = $object->__objHash;
+            $hash = spl_object_hash($object);
             //标记该对象已经被使用，不在pool中
             $this->objHash[$hash] = false;
             $this->inUseObject[$hash] = $object;
-            $object->__lastUseTime = time();
+            $this->lastUseTimeInfo[$hash] = time();
             if ($object instanceof ObjectInterface) {
                 try {
                     if ($object->beforeUse() === false) {
@@ -190,12 +192,13 @@ abstract class AbstractPool
              */
             $cid = Coroutine::getCid();
             //当obj等于当前协程defer的obj时,则清除
-            if (isset($this->context[$cid]) && $this->context[$cid]->__objHash === $obj->__objHash) {
+            if (isset($this->context[$cid]) && spl_object_hash($this->context[$cid]) === spl_object_hash($obj)) {
                 unset($this->context[$cid]);
             }
-            $hash = $obj->__objHash;
+            $hash = spl_object_hash($obj);
             unset($this->objHash[$hash]);
             unset($this->inUseObject[$hash]);
+            unset($this->lastUseTimeInfo[$hash]);
             if ($obj instanceof ObjectInterface) {
                 try {
                     $obj->gc();
@@ -234,11 +237,12 @@ abstract class AbstractPool
                 continue;
             }
             //回收超时没有使用的链接
-            if (time() - $item->__lastUseTime > $idleTime) {
+            $hash = spl_object_hash($item);
+            $lastUseTime = $this->lastUseTimeInfo[$hash];
+            if (time() - $lastUseTime > $idleTime) {
                 $num = $this->getConfig()->getMinObjectNum();
                 if($this->createdNum > $num){
                     //标记为不在队列内，允许进行gc回收
-                    $hash = $item->__objHash;
                     $this->objHash[$hash] = false;
                     $this->unsetObj($item);
                     continue;
@@ -247,12 +251,11 @@ abstract class AbstractPool
             //执行itemIntervalCheck检查
             if(!$this->itemIntervalCheck($item)){
                 //标记为不在队列内，允许进行gc回收
-                $hash = $item->__objHash;
                 $this->objHash[$hash] = false;
                 $this->unsetObj($item);
             }else{
                 //如果itemIntervalCheck 为真，则重新标记为已经使用过，可以用。
-                $item->__lastUseTime = time();
+                $this->lastUseTimeInfo[$hash] = time();
                 $this->poolChannel->push($item);
             }
         }
@@ -339,10 +342,9 @@ abstract class AbstractPool
         try {
             $obj = $this->createObject();
             if (is_object($obj)) {
-                $hash = Random::character(12);
+                $hash = spl_object_hash($obj);
                 $this->objHash[$hash] = true;
-                $obj->__objHash = $hash;
-                $obj->__lastUseTime = time();
+                $this->lastUseTimeInfo[$hash] = time();
                 $this->poolChannel->push($obj);
                 return true;
             } else {
@@ -357,17 +359,15 @@ abstract class AbstractPool
 
     public function isPoolObject($obj): bool
     {
-        if (isset($obj->__objHash)) {
-            return isset($this->objHash[$obj->__objHash]);
-        } else {
-            return false;
-        }
+        $hash = spl_object_hash($obj);
+        return isset($this->objHash[$hash]);
     }
 
     public function isInPool($obj): bool
     {
         if ($this->isPoolObject($obj)) {
-            return $this->objHash[$obj->__objHash];
+            $hash = spl_object_hash($obj);
+            return $this->objHash[$hash];
         } else {
             return false;
         }

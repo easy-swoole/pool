@@ -18,6 +18,10 @@ class Pool extends AbstractPool
         return new PoolObject();
     }
 
+    protected function itemIntervalCheck($item): bool
+    {
+        return  true;
+    }
 
 
 
