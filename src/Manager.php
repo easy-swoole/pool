@@ -12,7 +12,7 @@ class Manager
 
     protected $container = [];
 
-    function register(AbstractPool $pool,string $name = null):Manager
+    function register(AbstractPool $pool,string|null $name = null):Manager
     {
         if($name === null){
             $name = get_class($pool);

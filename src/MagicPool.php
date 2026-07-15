@@ -7,7 +7,7 @@ namespace EasySwoole\Pool;
 class MagicPool extends AbstractPool
 {
     protected $func;
-    function __construct(callable $func,Config $conf = null)
+    function __construct(callable $func,Config|null $conf = null)
     {
         $this->func = $func;
         if($conf == null){

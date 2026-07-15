@@ -105,7 +105,7 @@ abstract class AbstractPool
     /*
      * tryTimes为出现异常尝试次数
      */
-    public function getObj(float $timeout = null, int $tryTimes = 3)
+    public function getObj(float|null $timeout = null, int $tryTimes = 3)
     {
         /*
         * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
@@ -418,7 +418,7 @@ abstract class AbstractPool
         return $this;
     }
 
-    public function invoke(callable $call, float $timeout = null)
+    public function invoke(callable $call, float|null $timeout = null)
     {
         $obj = $this->getObj($timeout);
         if ($obj) {
@@ -435,7 +435,7 @@ abstract class AbstractPool
         }
     }
 
-    public function defer(float $timeout = null)
+    public function defer(float|null $timeout = null)
     {
         $cid = Coroutine::getCid();
         if (isset($this->context[$cid])) {
