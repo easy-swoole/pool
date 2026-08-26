@@ -14,7 +14,7 @@ class Config extends SplBean
     protected int $maxObjectNum = 20;
     protected int $minObjectNum = 5;
     protected float $getObjectTimeout = 3.0;
-    protected float $loadAverageTime = 0.001;
+    protected float $waitLoadAverageTime = 0.001;
     protected mixed $extraConf;
 
 
@@ -87,15 +87,15 @@ class Config extends SplBean
         return $this->minObjectNum;
     }
 
-    public function getLoadAverageTime(): float
+    public function getWaitLoadAverageTime(): float
     {
-        return $this->loadAverageTime;
+        return $this->waitLoadAverageTime;
     }
 
 
-    public function setLoadAverageTime(float $loadAverageTime): Config
+    public function setWaitLoadAverageTime(float $waitLoadAverageTime): Config
     {
-        $this->loadAverageTime = $loadAverageTime;
+        $this->waitLoadAverageTime = $waitLoadAverageTime;
         return $this;
     }
 

@@ -404,11 +404,15 @@ abstract class AbstractPool
                     $currentKey--;
                     $index++;
                 }
+                $this->getObjWaitTimeInfo = $getObjWaitTimeInfo;
+                $this->objectUseTimesInfo = $objectUseTimesInfo;
 
+                $average = 0;
+                if($objectUseTimes > 0){
+                    $average = $getObjWaitTime / $objectUseTimes;
+                }
 
-
-                $average = 1;
-                if($this->getConfig()->getLoadAverageTime() > $average){
+                if($this->getConfig()->getWaitLoadAverageTime() > $average){
                     //负载小。尝试回收链接百分之5的链接
                     $decNum = intval($this->createdNum * 0.05);
                     if( ($this->createdNum - $decNum) > $this->getConfig()->getMinObjectNum()){
