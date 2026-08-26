@@ -388,30 +388,7 @@ abstract class AbstractPool
                 });
             }
             $this->loadAverageTimerId = Timer::tick(5*1000,function (){
-                $currentKey = time();
-                $getObjWaitTimeInfo = [];
-                $getObjWaitTime = 0;
-                $objectUseTimesInfo = [];
-                $objectUseTimes = 0;
-                $index = 0;
-                while ($index < 15) {
-                    if(isset($this->getObjWaitTimeInfo[$currentKey])){
-                        $getObjWaitTimeInfo[$currentKey] = $this->getObjWaitTimeInfo[$currentKey];
-                        $getObjWaitTime += $getObjWaitTimeInfo[$currentKey];
-                        $objectUseTimesInfo[$currentKey] = $this->objectUseTimesInfo[$currentKey];
-                        $objectUseTimes += $objectUseTimesInfo[$currentKey];
-                    }
-                    $currentKey--;
-                    $index++;
-                }
-                $this->getObjWaitTimeInfo = $getObjWaitTimeInfo;
-                $this->objectUseTimesInfo = $objectUseTimesInfo;
-
-                $average = 0;
-                if($objectUseTimes > 0){
-                    $average = $getObjWaitTime / $objectUseTimes;
-                }
-
+                $average = $this->getLoadAverageTime();
                 if($this->getConfig()->getWaitLoadAverageTime() > $average){
                     //负载小。尝试回收链接百分之5的链接
                     $decNum = intval($this->createdNum * 0.05);
@@ -429,6 +406,33 @@ abstract class AbstractPool
                 }
             });
         }
+    }
+
+    protected function getLoadAverageTime():float
+    {
+        $currentKey = time();
+        $getObjWaitTimeInfo = [];
+        $getObjWaitTime = 0;
+        $objectUseTimesInfo = [];
+        $objectUseTimes = 0;
+        $index = 0;
+        while ($index < 15) {
+            if(isset($this->getObjWaitTimeInfo[$currentKey])){
+                $getObjWaitTimeInfo[$currentKey] = $this->getObjWaitTimeInfo[$currentKey];
+                $getObjWaitTime += $getObjWaitTimeInfo[$currentKey];
+                $objectUseTimesInfo[$currentKey] = $this->objectUseTimesInfo[$currentKey];
+                $objectUseTimes += $objectUseTimesInfo[$currentKey];
+            }
+            $currentKey--;
+            $index++;
+        }
+        $this->getObjWaitTimeInfo = $getObjWaitTimeInfo;
+        $this->objectUseTimesInfo = $objectUseTimesInfo;
+        $average = 0;
+        if($objectUseTimes > 0){
+            $average = $getObjWaitTime / $objectUseTimes;
+        }
+        return $average;
     }
 
     final function __clone()
