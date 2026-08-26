@@ -390,13 +390,20 @@ abstract class AbstractPool
             $this->loadAverageTimerId = Timer::tick(5*1000,function (){
                 $average = $this->getLoadAverageTime();
                 if($this->getConfig()->getWaitLoadAverageTime() > $average){
-                    //负载小。尝试回收链接百分之5的链接
-                    $decNum = intval($this->createdNum * 0.05);
+                    //负载小。尝试回收链接百分之10的链接
+                    $decNum = intval($this->createdNum * 0.1);
+                    if($decNum == 0){
+                        $decNum = 1;
+                    }
                     if( ($this->createdNum - $decNum) > $this->getConfig()->getMinObjectNum()){
                         while ($decNum > 0){
-                            $temp = $this->getObj(0.001,0);
-                            if($temp){
-                                $this->unsetObj($temp);
+                            /** @var PoolObject $t */
+                            $t = $this->poolChannel->pop(0.001);
+                            if($t){
+                                try {
+                                    $t->gc();
+                                }catch (\Throwable){}
+                                $this->createdNum--;
                             }else{
                                 break;
                             }
@@ -433,6 +440,14 @@ abstract class AbstractPool
             $average = $getObjWaitTime / $objectUseTimes;
         }
         return $average;
+    }
+
+    function status():array
+    {
+        return [
+            'createdNum' => $this->createdNum,
+            'loadAverageTime'=>round($this->getLoadAverageTime(),2),
+        ];
     }
 
     final function __clone()
