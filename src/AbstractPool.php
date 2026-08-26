@@ -6,36 +6,30 @@ namespace EasySwoole\Pool;
 
 use EasySwoole\Pool\Exception\Exception;
 use EasySwoole\Pool\Exception\PoolEmpty;
-use EasySwoole\Utility\Random;
+use EasySwoole\Pool\Tests\PoolObject;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
-use Swoole\Table;
 use Swoole\Timer;
 
 abstract class AbstractPool
 {
-    private $createdNum = 0;
-    /** @var Channel */
-    private $poolChannel;
-    private $objHash = [];
-    /** @var Config */
-    private $conf;
-    private $intervalCheckTimerId;
-    private $loadAverageTimerId;
-    private $destroy = false;
-    private $context = [];
-    private $loadWaitTimes = 0;
-    private $loadUseTimes = 0;
+    private int $createdNum = 0;
 
-    private $inUseObject = [];
-
-    private $lastUseTimeInfo = [];
+    private Channel|null $poolChannel = null;
+    private array $objHashInPool = [];
+    private Config $conf;
+    private int|null $intervalCheckTimerId;
+    private int|null $loadAverageTimerId;
+    private bool $destroy = false;
+    private array $deferContextObj = [];
+    private array $getObjWaitTimeInfo = [];
+    private array $objectUseTimesInfo = [];
 
 
     /*
      * 如果成功创建了,请返回对应的obj
      */
-    abstract protected function createObject();
+    abstract protected function createObject():ObjectInterface;
 
     public function __construct(?Config $conf = null)
     {
@@ -49,9 +43,70 @@ abstract class AbstractPool
         $this->conf = $conf;
     }
 
-    function getUsedObjects():array
+    /*
+     * tryTimes为出现异常尝试次数
+     */
+    public function getObj(float|null $timeout = null, int $tryTimes = 3):?PoolObject
     {
-        return $this->inUseObject;
+        if ($this->destroy) {
+            throw new Exception("pool is already destroyed");
+        }
+
+        $this->init();
+
+        if ($timeout === null) {
+            $timeout = $this->getConfig()->getGetObjectTimeout();
+        }
+
+        if($this->poolChannel->isEmpty()){
+            $this->initObject();
+        }
+
+        //记录pop等待耗时
+        $start = microtime(true);
+        $object = $this->poolChannel->pop($timeout);
+        $timeKey = time();
+        $takeTime = microtime(true) - $start;
+        if(isset($this->getObjWaitTimeInfo[$timeKey])){
+            $this->getObjWaitTimeInfo[$timeKey] += $takeTime;
+        }else{
+            $this->getObjWaitTimeInfo[$timeKey] = $takeTime;
+        }
+
+        if(empty($object)){
+            throw new PoolEmpty();
+        }
+
+        $hash = spl_object_hash($object);
+        //标记该对象已经被使用，不在pool中
+        $this->objHashInPool[$hash] = false;
+        try {
+            if ($object->beforeUse() === false) {
+                $this->unsetObj($object);
+                if ($tryTimes <= 0) {
+                    return null;
+                } else {
+                    $tryTimes--;
+                    return $this->getObj($timeout, $tryTimes);
+                }
+            }
+        } catch (\Throwable $throwable) {
+            $this->unsetObj($object);
+            if ($tryTimes <= 0) {
+                throw $throwable;
+            } else {
+                $tryTimes--;
+                return $this->getObj($timeout, $tryTimes);
+            }
+        }
+
+        if(isset($this->objectUseTimesInfo[$timeKey])){
+            $this->objectUseTimesInfo[$timeKey] += 1;
+        }else{
+            $this->objectUseTimesInfo[$timeKey] = 1;
+        }
+
+        return $object;
     }
 
     /*
@@ -63,8 +118,7 @@ abstract class AbstractPool
          * 当标记为销毁后，直接进行对象销毁
          */
         if ($this->destroy) {
-            $this->unsetObj($obj);
-            return true;
+            throw new Exception("pool is already destroyed");
         }
         /*
         * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
@@ -74,112 +128,33 @@ abstract class AbstractPool
          * 仅仅允许归属于本pool且不在pool内的对象进行回收
          */
         if ($this->isPoolObject($obj) && (!$this->isInPool($obj))) {
+            $hash = spl_object_hash($obj);
             /*
              * 主动回收可能存在的上下文
             */
             $cid = Coroutine::getCid();
-            if (isset($this->context[$cid]) && spl_object_hash($this->context[$cid]) === spl_object_hash($obj)) {
-                unset($this->context[$cid]);
+            //因为该object不一定是defer出去的
+            if (isset($this->deferContextObj[$cid]) && (spl_object_hash($this->deferContextObj[$cid]) === $hash)) {
+                unset($this->deferContextObj[$cid]);
             }
-            $hash = spl_object_hash($obj);
             //标记为在pool内
-            $this->objHash[$hash] = true;
-            unset($this->inUseObject[$hash]);
-            if ($obj instanceof ObjectInterface) {
-                try {
-                    $obj->objectRestore();
-                } catch (\Throwable $throwable) {
-                    //重新标记为非在pool状态,允许进行unset
-                    $this->objHash[$hash] = false;
-                    $this->unsetObj($obj);
-                    throw $throwable;
-                }
+            $this->objHashInPool[$hash] = true;
+            try {
+                $obj->objectRestore();
+                $this->poolChannel->push($obj);
+                return true;
+            } catch (\Throwable $throwable) {
+                //重新标记为非在pool状态,允许进行unset
+                $this->objHashInPool[$hash] = false;
+                $this->unsetObj($obj);
+                throw $throwable;
             }
-            $this->poolChannel->push($obj);
-            return true;
         } else {
             return false;
         }
     }
 
-    /*
-     * tryTimes为出现异常尝试次数
-     */
-    public function getObj(float|null $timeout = null, int $tryTimes = 3)
-    {
-        /*
-        * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
-        */
-        $this->init();
-        /*
-         * 当标记为销毁后，禁止取出对象
-         */
-        if ($this->destroy) {
-            return null;
-        }
-        if ($timeout === null) {
-            $timeout = $this->getConfig()->getGetObjectTimeout();
-        }
-        $object = null;
-        if ($this->poolChannel->isEmpty()) {
-            try {
-                $bool = $this->initObject();
-                if($bool === false){
-                    if ($tryTimes <= 0) {
-                        throw new Exception("initObject fail after 3 times");
-                    } else {
-                        $tryTimes--;
-                        return $this->getObj($timeout, $tryTimes);
-                    }
-                }
-            } catch (\Throwable $throwable) {
-                if ($tryTimes <= 0) {
-                    throw new Exception("initObject fail after 3 times case ".$throwable->getMessage());
-                } else {
-                    $tryTimes--;
-                    return $this->getObj($timeout, $tryTimes);
-                }
-            }
-        }
-        $start = microtime(true);
-        $object = $this->poolChannel->pop($timeout);
-        $take = microtime(true) - $start;
-        // getObj 记录取出等待时间 5s周期内
-        $this->loadWaitTimes += $take;
-        if (is_object($object)) {
-            $hash = spl_object_hash($object);
-            //标记该对象已经被使用，不在pool中
-            $this->objHash[$hash] = false;
-            $this->inUseObject[$hash] = $object;
-            $this->lastUseTimeInfo[$hash] = time();
-            if ($object instanceof ObjectInterface) {
-                try {
-                    if ($object->beforeUse() === false) {
-                        $this->unsetObj($object);
-                        if ($tryTimes <= 0) {
-                            return null;
-                        } else {
-                            $tryTimes--;
-                            return $this->getObj($timeout, $tryTimes);
-                        }
-                    }
-                } catch (\Throwable $throwable) {
-                    $this->unsetObj($object);
-                    if ($tryTimes <= 0) {
-                        throw $throwable;
-                    } else {
-                        $tryTimes--;
-                        return $this->getObj($timeout, $tryTimes);
-                    }
-                }
-            }
-            // 每次getObj 记录该连接池取出的次数 5s周期内
-            $this->loadUseTimes++;
-            return $object;
-        } else {
-            return null;
-        }
-    }
+
 
     /*
      * 彻底释放一个对象
@@ -187,27 +162,23 @@ abstract class AbstractPool
     public function unsetObj($obj): bool
     {
         if (!$this->isInPool($obj)) {
+            $hash = spl_object_hash($obj);
             /*
              * 主动回收可能存在的上下文
              */
             $cid = Coroutine::getCid();
-            //当obj等于当前协程defer的obj时,则清除
-            if (isset($this->context[$cid]) && spl_object_hash($this->context[$cid]) === spl_object_hash($obj)) {
-                unset($this->context[$cid]);
+            //因为该object不一定是defer出去的
+            if (isset($this->deferContextObj[$cid]) && (spl_object_hash($this->deferContextObj[$cid]) === $hash)) {
+                unset($this->deferContextObj[$cid]);
             }
-            $hash = spl_object_hash($obj);
-            unset($this->objHash[$hash]);
-            unset($this->inUseObject[$hash]);
-            unset($this->lastUseTimeInfo[$hash]);
-            if ($obj instanceof ObjectInterface) {
-                try {
-                    $obj->gc();
-                } catch (\Throwable $throwable) {
-                    throw $throwable;
-                } finally {
-                    $this->createdNum--;
-                }
-            } else {
+
+            unset($this->objHashInPool[$hash]);
+
+            try {
+                $obj->gc();
+            } catch (\Throwable $throwable) {
+                throw $throwable;
+            } finally {
                 $this->createdNum--;
             }
             return true;
@@ -216,72 +187,47 @@ abstract class AbstractPool
         }
     }
 
-    /*
-     * 超过$idleTime未出队使用的，将会被回收。
-     */
-    protected function idleCheck(?int $idleTime = null)
-    {
-        if($idleTime == null) {
-            $idleTime = $this->getConfig()->getMaxIdleTime();
-        }
 
-        /*
-        * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
-        */
-        $this->init();
-        $size = $this->poolChannel->length();
-        while (!$this->poolChannel->isEmpty() && $size >= 0) {
-            $size--;
-            $item = $this->poolChannel->pop(0.01);
-            if(!$item){
-                continue;
-            }
-            //回收超时没有使用的链接
-            $hash = spl_object_hash($item);
-            $lastUseTime = $this->lastUseTimeInfo[$hash];
-            if (time() - $lastUseTime > $idleTime) {
-                $num = $this->getConfig()->getMinObjectNum();
-                if($this->createdNum > $num){
-                    //标记为不在队列内，允许进行gc回收
-                    $this->objHash[$hash] = false;
-                    $this->unsetObj($item);
-                    continue;
-                }
-            }
-            //执行itemIntervalCheck检查
-            if(!$this->itemIntervalCheck($item)){
-                //标记为不在队列内，允许进行gc回收
-                $this->objHash[$hash] = false;
-                $this->unsetObj($item);
-            }else{
-                //如果itemIntervalCheck 为真，则重新标记为已经使用过，可以用。
-                $this->lastUseTimeInfo[$hash] = time();
-                $this->poolChannel->push($item);
-            }
-        }
-    }
-
-
-    protected function intervalCheck()
+    protected function intervalCheck(bool $throwError = false): void
     {
         try {
-            $this->idleCheck();
+            $size = $this->poolChannel->length();
+            while (!$this->poolChannel->isEmpty() && $size >= 0) {
+                $size--;
+                /** @var ObjectInterface $item */
+                $item = $this->poolChannel->pop(0.01);
+                if(!$item){
+                    continue;
+                }
+                try{
+                    if(!$item->intervalCheck()){
+                        //标记为不在队列内，允许进行gc回收
+                        $hash = spl_object_hash($item);
+                        $this->objHashInPool[$hash] = false;
+                        $this->unsetObj($item);
+                    }else{
+                        $this->poolChannel->push($item);
+                    }
+                }catch (\Throwable $throwable){
+                    $hash = spl_object_hash($item);
+                    $this->objHashInPool[$hash] = false;
+                    $this->unsetObj($item);
+                    if($throwError){
+                        throw $throwable;
+                    }else{
+                        trigger_error($throwable->getMessage());
+                    }
+                }
+            }
             $this->keepMin();
         }catch (\Throwable $throwable){
             //屏蔽此处产生的异常。避免因为定时器中未捕获的异常导致进程退出
-            trigger_error($throwable->getMessage());
+            if($throwError){
+                throw $throwable;
+            }else{
+                trigger_error($throwable->getMessage());
+            }
         }
-
-    }
-
-    /**
-     * @param $item
-     * @return bool
-     */
-    protected function itemIntervalCheck($item):bool
-    {
-        //默认返回false,在周期检查的时候，就废弃，重新创建，需要复用请在子类重写
-        return false;
     }
 
     /*
@@ -296,9 +242,6 @@ abstract class AbstractPool
         if ($this->createdNum < $num) {
             $left = $num - $this->createdNum;
             while ($left > 1) {
-                /*
-                 * 避免死循环
-                 */
                 if (!$this->initObject()) {
                     break;
                 }
@@ -315,60 +258,43 @@ abstract class AbstractPool
         return $this->conf;
     }
 
-    public function status():array
-    {
-        return [
-            'created'=>$this->createdNum,
-            'inuse'=>count($this->inUseObject),
-            'loadWaitTimes'=>$this->loadWaitTimes,
-            'loadUseTimes'=>$this->loadUseTimes
-        ];
-    }
-
-    private function initObject(): bool
+    private function initObject(): ObjectInterface|null
     {
         if ($this->destroy) {
-            return false;
+            return null;
         }
         /*
         * 懒惰模式，可以提前创建 pool对象，因此调用钱执行初始化检测
         */
         $this->init();
-        $obj = null;
-        $this->createdNum++;
+
         if ($this->createdNum > $this->getConfig()->getMaxObjectNum()) {
-            $this->createdNum--;
-            return false;
+            return null;
         }
+        $this->createdNum++;
         try {
             $obj = $this->createObject();
-            if (is_object($obj)) {
-                $hash = spl_object_hash($obj);
-                $this->objHash[$hash] = true;
-                $this->lastUseTimeInfo[$hash] = time();
-                $this->poolChannel->push($obj);
-                return true;
-            } else {
-                $this->createdNum--;
-            }
+            $hash = spl_object_hash($obj);
+            $this->objHashInPool[$hash] = true;
+            $this->poolChannel->push($obj);
+            return $obj;
         } catch (\Throwable $throwable) {
             $this->createdNum--;
             throw $throwable;
         }
-        return false;
     }
 
     public function isPoolObject($obj): bool
     {
         $hash = spl_object_hash($obj);
-        return isset($this->objHash[$hash]);
+        return isset($this->objHashInPool[$hash]);
     }
 
     public function isInPool($obj): bool
     {
         if ($this->isPoolObject($obj)) {
             $hash = spl_object_hash($obj);
-            return $this->objHash[$hash];
+            return $this->objHashInPool[$hash];
         } else {
             return false;
         }
@@ -377,7 +303,7 @@ abstract class AbstractPool
     /*
      * 销毁该pool，但保留pool原有状态
      */
-    function destroy()
+    function destroy(): void
     {
         $this->destroy = true;
         /*
@@ -398,10 +324,6 @@ abstract class AbstractPool
                 $item = $this->poolChannel->pop(0.01);
                 $this->unsetObj($item);
             }
-            foreach ($this->inUseObject as $item){
-                $this->unsetObj($item);
-                $this->inUseObject = [];
-            }
 
             $this->poolChannel->close();
             $this->poolChannel = null;
@@ -413,8 +335,8 @@ abstract class AbstractPool
         $this->destroy();
         $this->createdNum = 0;
         $this->destroy = false;
-        $this->context = [];
-        $this->objHash = [];
+        $this->deferContextObj = [];
+        $this->objHashInPool = [];
         return $this;
     }
 
@@ -423,8 +345,7 @@ abstract class AbstractPool
         $obj = $this->getObj($timeout);
         if ($obj) {
             try {
-                $ret = call_user_func($call, $obj);
-                return $ret;
+                return call_user_func($call, $obj);
             } catch (\Throwable $throwable) {
                 throw $throwable;
             } finally {
@@ -438,16 +359,16 @@ abstract class AbstractPool
     public function defer(float|null $timeout = null)
     {
         $cid = Coroutine::getCid();
-        if (isset($this->context[$cid])) {
-            return $this->context[$cid];
+        if (isset($this->deferContextObj[$cid])) {
+            return $this->deferContextObj[$cid];
         }
         $obj = $this->getObj($timeout);
         if ($obj) {
-            $this->context[$cid] = $obj;
+            $this->deferContextObj[$cid] = $obj;
             Coroutine::defer(function () use ($cid) {
-                if (isset($this->context[$cid])) {
-                    $obj = $this->context[$cid];
-                    unset($this->context[$cid]);
+                if (isset($this->deferContextObj[$cid])) {
+                    $obj = $this->deferContextObj[$cid];
+                    unset($this->deferContextObj[$cid]);
                     $this->recycleObj($obj);
                 }
             });
@@ -457,7 +378,7 @@ abstract class AbstractPool
         }
     }
 
-    private function init()
+    private function init(): void
     {
         if ((!$this->poolChannel) && (!$this->destroy)) {
             $this->poolChannel = new Channel($this->conf->getMaxObjectNum() + 8);
@@ -467,16 +388,7 @@ abstract class AbstractPool
                 });
             }
             $this->loadAverageTimerId = Timer::tick(5*1000,function (){
-                // 5s 定时检测
-                $loadWaitTime = $this->loadWaitTimes;
-                $loadUseTimes = $this->loadUseTimes;
-                $this->loadUseTimes = 0;
-                $this->loadWaitTimes = 0;
-                //避免分母为0
-                if($loadUseTimes <= 0){
-                    $loadUseTimes = 1;
-                }
-                $average = $loadWaitTime/$loadUseTimes; // average 记录的是平均每个链接取出的时间
+                $average = 1;
                 if($this->getConfig()->getLoadAverageTime() > $average){
                     //负载小。尝试回收链接百分之5的链接
                     $decNum = intval($this->createdNum * 0.05);

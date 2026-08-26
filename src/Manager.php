@@ -10,7 +10,7 @@ class Manager
 {
     use Singleton;
 
-    protected $container = [];
+    protected array $container = [];
 
     function register(AbstractPool $pool,string|null $name = null):Manager
     {
@@ -29,7 +29,7 @@ class Manager
         return null;
     }
 
-    function resetAll()
+    function resetAll(): void
     {
         /** @var AbstractPool $item */
         foreach ($this->container as $item){

@@ -35,7 +35,7 @@ class PoolObject implements ObjectInterface
         var_dump('restore');
     }
 
-    function beforeUse(): ?bool
+    function beforeUse(): bool
     {
         var_dump('beforeUse');
         return $this->isOk;
@@ -56,5 +56,11 @@ class PoolObject implements ObjectInterface
     {
         $this->isOk = $isOk;
     }
+
+    function intervalCheck(): bool
+    {
+        return true;
+    }
+
 
 }

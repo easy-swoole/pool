@@ -13,7 +13,7 @@ use EasySwoole\Pool\AbstractPool;
 
 class Pool extends AbstractPool
 {
-    protected function createObject()
+    protected function createObject():PoolObject
     {
         return new PoolObject();
     }
