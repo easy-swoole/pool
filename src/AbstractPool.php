@@ -356,7 +356,7 @@ abstract class AbstractPool
         }
     }
 
-    public function defer(float|null $timeout = null)
+    public function defer(float|null $timeout = null):ObjectInterface
     {
         $cid = Coroutine::getCid();
         if (isset($this->deferContextObj[$cid])) {
@@ -388,6 +388,24 @@ abstract class AbstractPool
                 });
             }
             $this->loadAverageTimerId = Timer::tick(5*1000,function (){
+                $currentKey = time();
+                $getObjWaitTimeInfo = [];
+                $getObjWaitTime = 0;
+                $objectUseTimesInfo = [];
+                $objectUseTimes = 0;
+                $index = 0;
+                while ($index < 15) {
+                    if(isset($this->getObjWaitTimeInfo[$currentKey])){
+                        $getObjWaitTimeInfo[$currentKey] = $this->getObjWaitTimeInfo[$currentKey];
+                        $getObjWaitTime += $getObjWaitTimeInfo[$currentKey];
+                        $objectUseTimesInfo[$currentKey] = $this->objectUseTimesInfo[$currentKey];
+                        $objectUseTimes += $objectUseTimesInfo[$currentKey];
+                    }
+                    $currentKey--;
+                    $index++;
+                }
+
+
                 $average = 1;
                 if($this->getConfig()->getLoadAverageTime() > $average){
                     //负载小。尝试回收链接百分之5的链接
