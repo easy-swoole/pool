@@ -268,7 +268,7 @@ abstract class AbstractPool
         */
         $this->init();
 
-        if ($this->createdNum > $this->getConfig()->getMaxObjectNum()) {
+        if ($this->createdNum >= $this->getConfig()->getMaxObjectNum()) {
             return null;
         }
         $this->createdNum++;
@@ -404,6 +404,7 @@ abstract class AbstractPool
                     $currentKey--;
                     $index++;
                 }
+
 
 
                 $average = 1;
