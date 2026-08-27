@@ -46,6 +46,11 @@ abstract class AbstractPool
     /*
      * tryTimes为出现异常尝试次数
      */
+    /**
+     * @throws \Throwable
+     * @throws Exception
+     * @throws PoolEmpty
+     */
     public function getObj(float|null $timeout = null, int $tryTimes = 3):?PoolObject
     {
         if ($this->destroy) {
@@ -144,14 +149,15 @@ abstract class AbstractPool
                 $this->poolChannel->push($obj);
                 return true;
             } catch (\Throwable $throwable) {
+                // 非关键位置没必要抛出异常导致进程意外结束
+                $class = get_class($obj);
+                trigger_error("{$class} objectRestore() error,{$throwable->getMessage()}");
                 //重新标记为非在pool状态,允许进行unset
                 $this->objHashInPool[$hash] = false;
                 $this->unsetObj($obj);
-                throw $throwable;
             }
-        } else {
-            return false;
         }
+        return false;
     }
 
 
@@ -177,7 +183,9 @@ abstract class AbstractPool
             try {
                 $obj->gc();
             } catch (\Throwable $throwable) {
-                throw $throwable;
+                // 非关键位置没必要抛出异常导致进程意外结束
+                $class = get_class($obj);
+                trigger_error("{$class} gc() error,{$throwable->getMessage()}");
             } finally {
                 $this->createdNum--;
             }
@@ -188,46 +196,35 @@ abstract class AbstractPool
     }
 
 
-    protected function intervalCheck(bool $throwError = false): void
+    protected function intervalCheck(): void
     {
-        try {
-            $size = $this->poolChannel->length();
-            while (!$this->poolChannel->isEmpty() && $size >= 0) {
-                $size--;
-                /** @var ObjectInterface $item */
-                $item = $this->poolChannel->pop(0.01);
-                if(!$item){
-                    continue;
-                }
-                try{
-                    if(!$item->intervalCheck()){
-                        //标记为不在队列内，允许进行gc回收
-                        $hash = spl_object_hash($item);
-                        $this->objHashInPool[$hash] = false;
-                        $this->unsetObj($item);
-                    }else{
-                        $this->poolChannel->push($item);
-                    }
-                }catch (\Throwable $throwable){
+        $size = $this->poolChannel->length();
+        while (!$this->poolChannel->isEmpty() && $size >= 0) {
+            $size--;
+            /** @var ObjectInterface $item */
+            $item = $this->poolChannel->pop(0.01);
+            if(!$item){
+                continue;
+            }
+            try{
+                if(!$item->intervalCheck()){
+                    //标记为不在队列内，允许进行gc回收
                     $hash = spl_object_hash($item);
                     $this->objHashInPool[$hash] = false;
                     $this->unsetObj($item);
-                    if($throwError){
-                        throw $throwable;
-                    }else{
-                        trigger_error($throwable->getMessage());
-                    }
+                }else{
+                    $this->poolChannel->push($item);
                 }
-            }
-            $this->keepMin();
-        }catch (\Throwable $throwable){
-            //屏蔽此处产生的异常。避免因为定时器中未捕获的异常导致进程退出
-            if($throwError){
-                throw $throwable;
-            }else{
-                trigger_error($throwable->getMessage());
+            }catch (\Throwable $throwable){
+                // 非关键位置没必要抛出异常导致进程意外结束
+                $class = get_class($item);
+                trigger_error("{$class} gc() error,{$throwable->getMessage()}");
+                $hash = spl_object_hash($item);
+                $this->objHashInPool[$hash] = false;
+                $this->unsetObj($item);
             }
         }
+        $this->keepMin();
     }
 
     /*
@@ -239,12 +236,19 @@ abstract class AbstractPool
         if($num == null){
             $num = $this->getConfig()->getMinObjectNum();
         }
-        if ($this->createdNum < $num) {
+        if ($this->createdNum <= $num) {
             $left = $num - $this->createdNum;
-            while ($left > 1) {
-                if (!$this->initObject()) {
+            while ($left >= 1) {
+                try {
+                    if (!$this->initObject()) {
+                        break;
+                    }
+                }catch (\Throwable $throwable){
+                    $class = static::class;
+                    trigger_error("{$class} createObject() error,{$throwable->getMessage()}");
                     break;
                 }
+
                 $left--;
                 $currentAdd++;
             }
@@ -271,17 +275,13 @@ abstract class AbstractPool
         if ($this->createdNum >= $this->getConfig()->getMaxObjectNum()) {
             return null;
         }
+
+        $obj = $this->createObject();
+        $hash = spl_object_hash($obj);
+        $this->objHashInPool[$hash] = true;
         $this->createdNum++;
-        try {
-            $obj = $this->createObject();
-            $hash = spl_object_hash($obj);
-            $this->objHashInPool[$hash] = true;
-            $this->poolChannel->push($obj);
-            return $obj;
-        } catch (\Throwable $throwable) {
-            $this->createdNum--;
-            throw $throwable;
-        }
+        $this->poolChannel->push($obj);
+        return $obj;
     }
 
     public function isPoolObject($obj): bool
@@ -372,7 +372,7 @@ abstract class AbstractPool
                     $this->recycleObj($obj);
                 }
             });
-            return $this->defer($timeout);
+            return $obj;
         } else {
             throw new PoolEmpty( "pool is empty");
         }
