@@ -244,6 +244,7 @@ abstract class AbstractPool
                         break;
                     }
                 }catch (\Throwable $throwable){
+                    // 非关键位置没必要抛出异常导致进程意外结束
                     $class = static::class;
                     trigger_error("{$class} createObject() error,{$throwable->getMessage()}");
                     break;
