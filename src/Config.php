@@ -9,8 +9,7 @@ use EasySwoole\Spl\SplBean;
 
 class Config extends SplBean
 {
-    protected int $intervalCheckTime = 10*1000;
-    protected int $maxIdleTime = 15;
+    protected int $intervalCheckTime = 5*1000;
     protected int $maxObjectNum = 20;
     protected int $minObjectNum = 5;
     protected float $getObjectTimeout = 3.0;
@@ -26,19 +25,6 @@ class Config extends SplBean
     public function setIntervalCheckTime($intervalCheckTime): Config
     {
         $this->intervalCheckTime = $intervalCheckTime;
-        return $this;
-    }
-
-
-    public function getMaxIdleTime(): int
-    {
-        return $this->maxIdleTime;
-    }
-
-
-    public function setMaxIdleTime(int $maxIdleTime): Config
-    {
-        $this->maxIdleTime = $maxIdleTime;
         return $this;
     }
 
