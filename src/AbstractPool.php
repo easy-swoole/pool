@@ -167,7 +167,7 @@ abstract class AbstractPool
      */
     public function unsetObj($obj): bool
     {
-        if (!$this->isInPool($obj)) {
+        if (!$this->isInPool($obj) && $this->isPoolObject($obj)) {
             $hash = spl_object_hash($obj);
             /*
              * 主动回收可能存在的上下文
@@ -293,12 +293,8 @@ abstract class AbstractPool
 
     public function isInPool($obj): bool
     {
-        if ($this->isPoolObject($obj)) {
-            $hash = spl_object_hash($obj);
-            return $this->objHashInPool[$hash];
-        } else {
-            return false;
-        }
+        $hash = spl_object_hash($obj);
+        return $this->objHashInPool[$hash] ?? false;
     }
 
     /*
