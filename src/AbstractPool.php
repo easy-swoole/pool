@@ -218,7 +218,7 @@ abstract class AbstractPool
             }catch (\Throwable $throwable){
                 // 非关键位置没必要抛出异常导致进程意外结束
                 $class = get_class($item);
-                trigger_error("{$class} gc() error,{$throwable->getMessage()}");
+                trigger_error("{$class} intervalCheck() error,{$throwable->getMessage()}");
                 $hash = spl_object_hash($item);
                 $this->objHashInPool[$hash] = false;
                 $this->unsetObj($item);
@@ -392,7 +392,7 @@ abstract class AbstractPool
                     if($decNum == 0){
                         $decNum = 1;
                     }
-                    if( ($this->createdNum - $decNum) > $this->getConfig()->getMinObjectNum()){
+                    if( ($this->createdNum - $decNum) >= $this->getConfig()->getMinObjectNum()){
                         while ($decNum > 0){
                             /** @var PoolObject $t */
                             $t = $this->poolChannel->pop(0.001);
