@@ -69,6 +69,7 @@ abstract class AbstractPool
 
         //记录pop等待耗时
         $start = microtime(true);
+        /** @var ObjectInterface $object */
         $object = $this->poolChannel->pop($timeout);
         $timeKey = time();
         $takeTime = microtime(true) - $start;
