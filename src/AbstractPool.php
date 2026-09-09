@@ -13,7 +13,7 @@ use Swoole\Timer;
 
 abstract class AbstractPool
 {
-    private int $createdNum = 0;
+    protected int $createdNum = 0;
 
     private Channel|null $poolChannel = null;
     private array $objHashInPool = [];
@@ -257,7 +257,7 @@ abstract class AbstractPool
         return $this->conf;
     }
 
-    private function initObject(): ObjectInterface|null
+    protected function initObject(): ObjectInterface|null
     {
         if ($this->destroy) {
             return null;
