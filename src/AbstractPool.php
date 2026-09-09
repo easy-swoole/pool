@@ -6,7 +6,6 @@ namespace EasySwoole\Pool;
 
 use EasySwoole\Pool\Exception\Exception;
 use EasySwoole\Pool\Exception\PoolEmpty;
-use EasySwoole\Pool\Tests\PoolObject;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
 use Swoole\Timer;
@@ -44,7 +43,7 @@ abstract class AbstractPool
      * @throws Exception
      * @throws PoolEmpty
      */
-    public function getObj(float|null $timeout = null, int $tryTimes = 3):?PoolObject
+    public function getObj(float|null $timeout = null, int $tryTimes = 3):?ObjectInterface
     {
         if ($this->destroy) {
             throw new Exception("pool is already destroyed");
@@ -388,7 +387,7 @@ abstract class AbstractPool
                     }
                     if( ($this->createdNum - $decNum) >= $this->getConfig()->getMinObjectNum()){
                         while ($decNum > 0){
-                            /** @var PoolObject $t */
+                            /** @var ObjectInterface $t */
                             $t = $this->poolChannel->pop(0.001);
                             if($t){
                                 try {
