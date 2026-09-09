@@ -17,7 +17,7 @@ abstract class AbstractPool
 
     private Channel|null $poolChannel = null;
     private array $objHashInPool = [];
-    private Config $conf;
+    protected Config $conf;
     private int|null $intervalCheckTimerId;
     private int|null $loadAverageTimerId;
     private bool $destroy = false;
@@ -31,15 +31,8 @@ abstract class AbstractPool
      */
     abstract protected function createObject():ObjectInterface;
 
-    public function __construct(?Config $conf = null)
+    public function __construct(Config $conf)
     {
-        if($conf == null){
-            $conf = new Config();
-        }
-        if ($conf->getMinObjectNum() >= $conf->getMaxObjectNum()) {
-            $class = static::class;
-            throw new Exception("pool max num is small than min num for {$class} error");
-        }
         $this->conf = $conf;
     }
 

@@ -10,8 +10,8 @@ use EasySwoole\Spl\SplBean;
 class Config extends SplBean
 {
     protected int $intervalCheckTime = 5*1000;
-    protected int $maxObjectNum = 20;
-    protected int $minObjectNum = 5;
+    protected int $maxObjectNum = 16;
+    protected int $minObjectNum = 8;
     protected float $getObjectTimeout = 3.0;
     protected float $waitLoadAverageTime = 0.001;
     protected mixed $extraConf;
@@ -92,5 +92,12 @@ class Config extends SplBean
         }
         $this->minObjectNum = $minObjectNum;
         return $this;
+    }
+
+    protected function initialize(): void
+    {
+        if($this->minObjectNum >= $this->maxObjectNum){
+            throw new Exception('min num is bigger than max');
+        }
     }
 }
