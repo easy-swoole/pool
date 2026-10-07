@@ -11,6 +11,7 @@ class Config extends SplBean
 {
     protected int $intervalCheckTime = 5*1000;
     protected int $maxObjectNum = 16;
+    protected int $intervalCheckBatchSize = 8;
     protected int $minObjectNum = 8;
     protected float $getObjectTimeout = 3.0;
     protected float $waitLoadAverageTime = 0.001;
@@ -28,6 +29,20 @@ class Config extends SplBean
         return $this;
     }
 
+
+    public function getIntervalCheckBatchSize(): int
+    {
+        return $this->intervalCheckBatchSize;
+    }
+
+    public function setIntervalCheckBatchSize(int $intervalCheckBatchSize): Config
+    {
+        if ($intervalCheckBatchSize < 1) {
+            throw new Exception('interval check batch size must be positive');
+        }
+        $this->intervalCheckBatchSize = $intervalCheckBatchSize;
+        return $this;
+    }
 
     public function getMaxObjectNum(): int
     {
@@ -96,6 +111,9 @@ class Config extends SplBean
 
     protected function initialize(): void
     {
+        if ($this->intervalCheckBatchSize < 1) {
+            throw new Exception('interval check batch size must be positive');
+        }
         if($this->minObjectNum >= $this->maxObjectNum){
             throw new Exception('min num is bigger than max');
         }

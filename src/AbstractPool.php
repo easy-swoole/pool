@@ -20,6 +20,7 @@ abstract class AbstractPool
     private int|null $intervalCheckTimerId = null;
     private int|null $loadAverageTimerId = null;
     private bool $destroy = false;
+    private bool $intervalCheckRunning = false;
     private array $deferContextObj = [];
     private array $getObjWaitTimeInfo = [];
     private array $objectUseTimesInfo = [];
@@ -191,33 +192,43 @@ abstract class AbstractPool
 
     protected function intervalCheck(): void
     {
-        $size = $this->poolChannel->length();
-        while (!$this->poolChannel->isEmpty() && $size >= 0) {
-            $size--;
-            /** @var ObjectInterface $item */
-            $item = $this->poolChannel->pop(0.01);
-            if(!$item){
-                continue;
-            }
-            try{
-                if(!$item->intervalCheck()){
-                    //标记为不在队列内，允许进行gc回收
-                    $hash = spl_object_hash($item);
-                    $this->objHashInPool[$hash] = false;
-                    $this->unsetObj($item);
-                }else{
-                    $this->poolChannel->push($item);
-                }
-            }catch (\Throwable $throwable){
-                // 非关键位置没必要抛出异常导致进程意外结束
-                $class = get_class($item);
-                trigger_error("{$class} intervalCheck() error,{$throwable->getMessage()}");
-                $hash = spl_object_hash($item);
-                $this->objHashInPool[$hash] = false;
-                $this->unsetObj($item);
-            }
+        if ($this->destroy || !$this->poolChannel || $this->intervalCheckRunning) {
+            return;
         }
-        $this->keepMin();
+        $this->intervalCheckRunning = true;
+        $channel = $this->poolChannel;
+        try {
+            $size = min($channel->length(), $this->conf->getIntervalCheckBatchSize());
+            // Healthy objects go to the tail, so later rounds check the rest.
+            while ($size > 0 && !$channel->isEmpty() && !$this->destroy) {
+                $size--;
+                /** @var ObjectInterface $item */
+                $item = $channel->pop(0.01);
+                if (!$item) {
+                    break;
+                }
+                try {
+                    $healthy = $item->intervalCheck();
+                } catch (\Throwable $throwable) {
+                    $this->objHashInPool[spl_object_hash($item)] = false;
+                    $this->unsetObj($item);
+                    $class = get_class($item);
+                    trigger_error("{$class} intervalCheck() error,{$throwable->getMessage()}");
+                    continue;
+                }
+                if (!$healthy || $this->destroy) {
+                    $this->objHashInPool[spl_object_hash($item)] = false;
+                    $this->unsetObj($item);
+                } else {
+                    $channel->push($item);
+                }
+            }
+            if (!$this->destroy) {
+                $this->keepMin();
+            }
+        } finally {
+            $this->intervalCheckRunning = false;
+        }
     }
 
     /*
