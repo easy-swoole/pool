@@ -17,8 +17,8 @@ abstract class AbstractPool
     private Channel|null $poolChannel = null;
     private array $objHashInPool = [];
     protected Config $conf;
-    private int|null $intervalCheckTimerId;
-    private int|null $loadAverageTimerId;
+    private int|null $intervalCheckTimerId = null;
+    private int|null $loadAverageTimerId = null;
     private bool $destroy = false;
     private array $deferContextObj = [];
     private array $getObjWaitTimeInfo = [];
@@ -270,10 +270,15 @@ abstract class AbstractPool
             return null;
         }
 
-        $obj = $this->createObject();
+        $this->createdNum++;
+        try {
+            $obj = $this->createObject();
+        } catch (\Throwable $throwable) {
+            $this->createdNum--;
+            throw $throwable;
+        }
         $hash = spl_object_hash($obj);
         $this->objHashInPool[$hash] = true;
-        $this->createdNum++;
         $this->poolChannel->push($obj);
         return $obj;
     }
@@ -312,6 +317,10 @@ abstract class AbstractPool
         if($this->poolChannel){
             while (!$this->poolChannel->isEmpty()) {
                 $item = $this->poolChannel->pop(0.01);
+                if (!$item) {
+                    continue;
+                }
+                $this->objHashInPool[spl_object_hash($item)] = false;
                 $this->unsetObj($item);
             }
 
