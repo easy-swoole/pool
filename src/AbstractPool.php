@@ -399,10 +399,8 @@ abstract class AbstractPool
                             /** @var ObjectInterface $t */
                             $t = $this->poolChannel->pop(0.001);
                             if($t){
-                                try {
-                                    $t->gc();
-                                }catch (\Throwable){}
-                                $this->createdNum--;
+                                $this->objHashInPool[spl_object_hash($t)] = false;
+                                $this->unsetObj($t);
                             }else{
                                 break;
                             }
@@ -426,7 +424,7 @@ abstract class AbstractPool
             if(isset($this->getObjWaitTimeInfo[$currentKey])){
                 $getObjWaitTimeInfo[$currentKey] = $this->getObjWaitTimeInfo[$currentKey];
                 $getObjWaitTime += $getObjWaitTimeInfo[$currentKey];
-                $objectUseTimesInfo[$currentKey] = $this->objectUseTimesInfo[$currentKey];
+                $objectUseTimesInfo[$currentKey] = $this->objectUseTimesInfo[$currentKey] ?? 0;
                 $objectUseTimes += $objectUseTimesInfo[$currentKey];
             }
             $currentKey--;
